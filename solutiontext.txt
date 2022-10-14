@@ -1,0 +1,6 @@
+a) sqrt(n)
+b) see partb.c
+c) 1/log x is the probability that a number is prime.
+   If it is prime, then we do about (n/x)-x+1 operations
+   So, when we integrate, we get
+   $$\int_2^sqrt(n) ... = :wq
