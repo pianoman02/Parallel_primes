@@ -31,9 +31,14 @@ long sequential_sieve(long n, bool* pb){
 
 void sieve() {
 	bsp_begin( P );
+
     long p = P;
 	long s = bsp_pid();
     long alpha = N+1;
+
+    bsp_size_t tagSize = sizeof(long);
+    bsp_set_tagsize(&tagSize);
+    bsp_sync();
 
     // We calculate the primes until (not including alpha) at processor 0
     if (s==0)
