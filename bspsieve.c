@@ -6,14 +6,18 @@
 long P; // number of processors requested
 long N; // maximum prime to be found
 
+bool** primesalloc(long alpha){
+    long amountofsteps = 0;
+    long test = alpha;
+    for (;test<N; test++){
+        test = test*test;
+        amountofsteps++;
+    }
+}
 
 long sequential_sieve(long n, bool* pb){
 	pb[0]=false;
 	pb[1]=false;
-	// Initialise the rest of the values
-	for (long i=2;i<n; i++){
-		pb[i] = true;
-	}
 
 	long totalprimes = 0;
 	// Now the sieve
@@ -31,10 +35,10 @@ long sequential_sieve(long n, bool* pb){
 
 void sieve() {
 	bsp_begin( P );
-
+    N = 300;
     long p = P;
 	long s = bsp_pid();
-    long alpha = N+1;
+    long alpha = p*100; // We assume p devides alpha
 
     bsp_size_t tagSize = sizeof(long);
     bsp_set_tagsize(&tagSize);
@@ -44,6 +48,10 @@ void sieve() {
     if (s==0)
     {
         bool* pb = malloc(alpha*sizeof(bool));
+        for (long i=0; i<alpha; i++){
+            pb[i] = true;
+        }
+
         long noOfPrimes = sequential_sieve(alpha, pb);
         long* primesending = malloc(noOfPrimes*sizeof(long));
         long j=0;
@@ -52,6 +60,7 @@ void sieve() {
 		    {
 			    primesending[j] = i;
                 j++;
+                printf("%ld\n", i);
 		    }
 	    }
         ////////////////////
@@ -59,11 +68,31 @@ void sieve() {
         ////////////////////
         for (long t=0; t<p; t++){
             bsp_send(t,&noOfPrimes,primesending, noOfPrimes*sizeof(long));
-            printf("The provided tag to processor %ld is %ld\n", t,noOfPrimes);
         }
     }
     bsp_sync();
+
     /////////////////////////////////////////
+    /// Next superstep
+    /////////////////////////////////////////
+
+    /*
+    // First, we allocate all the numbers.
+    bool** pb2 = primesalloc(alpha);
+
+
+    long lowprimetest = alpha; // in every step, this number is squared
+    long highprimetest = min(N,alpha*alpha);
+    while(lowprimetest < N)
+    {
+        // How to make sure that we already assign all the numbers? Should we?
+
+
+
+        lowprimetest = highprimetest;
+        highprimetest = min(N, lowprimetest*lowprimetest);
+    }
+    */
     bsp_nprocs_t nparts_recvd=0;
     bsp_size_t nbytes_recvd=0;
     bsp_qsize(&nparts_recvd, &nbytes_recvd);
@@ -72,18 +101,33 @@ void sieve() {
     for (long j=0; j<nparts_recvd; j++){
         bsp_size_t payload_size=0;
         long count=-1;
-        printf("count = %ld in processor %ld before get_tag\n", count, s);
         bsp_get_tag(&payload_size, &count);
-        printf("count = %ld in processor %ld after get_tag\n", count, s);
         bsp_move(&arrivedprimes[totalcount], payload_size);
-        totalcount += payload_size/sizeof(long); // apparently count is not working
+        totalcount += count;
     }
-    for (long i=0; i<totalcount; i++){
-        printf("%ld, %ld\n",arrivedprimes[i], s); // The transmission does work well, on the contrary.
+    // Now, we allocate new memory for the new primes
+    long size = (alpha*alpha-alpha)/p;
+    bool* pb2 = malloc(size*sizeof(bool));
+    for (long i=0; i<size; i++){
+        pb2[i] = true;
+    }
+    // Now we loop over the provided primes:
+    long a = (p-s)*alpha/p + s*alpha*alpha/p;
+    long b = (p-s-1)*alpha/p + (s+1)*alpha*alpha/p;
+    for (long j=0; j<totalcount; j++){
+        long q = arrivedprimes[j];
+        long d = (a+q-1)/q; //  $\lceil a/q \rceil$
+        for (; d*q<b;d++){
+            pb2[d*q-a] = false;
+        }
+    }
+    for (long i=0; i<size; i++){
+        if (pb2[i]){
+            printf("%ld\n", i+a);
+        }
     }
 
 
-    // Now assume we already fixed the stuff until a certain point.
 	bsp_end();
 }
 
@@ -98,9 +142,9 @@ int main( int argc, char **argv ) {
         fflush(stdout);
         exit(EXIT_FAILURE);
     }
-    printf("To which number do you want to find the primes?\n");
-	fflush(stdout);
-	scanf("%ld",&N);
+    //printf("To which number do you want to find the primes?\n");
+	//fflush(stdout);
+	//scanf("%ld",&N);
 	sieve();
 	exit(EXIT_SUCCESS);
 }
