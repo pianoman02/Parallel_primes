@@ -190,7 +190,7 @@ void sieve() {
     }
     bsp_sync();
 
-    parallel_part_sieve(s,alpha,p,n);
+    parallel_part_sieve(s,alpha,p,N);
     
 	bsp_end();
 }
