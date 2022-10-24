@@ -5,12 +5,14 @@
 
 long P; // number of processors requested
 long N; // maximum prime to be found
+bool PrintPrimes; // true prints the primes, false prints no primes.
 
+// Returns the minimum of a and b
 long Min(long a, long b){
     return a<b?a:b;
 }
 
-// This function a double array to the places where the primes are stored.
+// This function a makes an array to the places where the primes are stored.
 // To call this function, one must have N>alpha
 bool** primesalloc(long alpha, long* size, long** noOfPrimes){
     // We neglect for simplicity the storage of the first alpha-1 numbers which are calculated by the first processor.
@@ -82,7 +84,8 @@ void sequential_part_sieve(long alpha,long p){
 		    {
 			    primesending[j] = i;
                 j++;
-                printf("%ld\n", i);
+                if (PrintPrimes)
+                    printf("%ld\n", i);
 		    }
 	    }
         ////////////////////
@@ -91,6 +94,8 @@ void sequential_part_sieve(long alpha,long p){
         for (long t=0; t<p; t++){
             bsp_send(t,&noOfPrimes,primesending, noOfPrimes*sizeof(long));
         }
+        printf("%ld primes found in phase -1 by processor 0\n",noOfPrimes);
+        printf("\n");
         free(primesending);
         free(pb);
 }
@@ -121,10 +126,7 @@ void parallel_part_sieve(long s,long alpha, long p,long n){
     long highprimetest = Min(N,alpha*alpha);
     long roundno = 0;
     while(lowprimetest < n)
-    {
-        if (s==0)
-            printf("Starting new phase -------------------------\n");
-        
+    {        
         // Reading new primes from the input
         bsp_nprocs_t nparts_recvd=0;
         bsp_size_t nbytes_recvd=0;
@@ -156,10 +158,11 @@ void parallel_part_sieve(long s,long alpha, long p,long n){
         bool* this_section = pb2[roundno];
         long* primesending = malloc(amountOfPrimes[roundno]*sizeof(long));
         long j=0;
-        printf("There are %ld primes\n",amountOfPrimes[roundno]);
+        printf("%ld primes found in phase %ld by processor %ld\n",amountOfPrimes[roundno],roundno,s);
         for (long i=0;i<size_this_section; i++){
             if(this_section[i]){
-                printf("%ld\n", i+a_this_section);
+                if (PrintPrimes)
+                    printf("%ld\n", i+a_this_section);
                 primesending[j] = i+a_this_section;
                 j++;
             }
@@ -175,6 +178,8 @@ void parallel_part_sieve(long s,long alpha, long p,long n){
         free(arrivedprimes);
         free(primesending);
         bsp_sync();
+        if (s==0)
+            printf("\n");
     }
     
     // Free the resources again
@@ -201,12 +206,17 @@ void sieve() {
 
     parallel_part_sieve(s,alpha,p,N);
     
+    float t = bsp_time();
+    printf("It took processor %ld in total %f seconds\n",s,t);
 	bsp_end();
 }
 
+// Starting point of the application
 int main( int argc, char **argv ) {
     bsp_init(sieve, argc, argv);
-    printf( "How many processors do you want to use?\n");
+
+    // Get amount of processors
+    printf( "How many processors p do you want to use?\n");
     fflush(stdout);
     scanf("%ld",&P);
     if (P > bsp_nprocs()){
@@ -215,11 +225,26 @@ int main( int argc, char **argv ) {
         fflush(stdout);
         exit(EXIT_FAILURE);
     }
-    printf("To which number do you want to find the primes?\n");
+
+    // Get amount of primes to be found
+    printf("To (not including) which number N do you want to find the primes?\n");
 	fflush(stdout);
 	scanf("%ld",&N);
     N = ((N+P-1)/P)*P; // We assume that p devides N (adjust in the future)
-    printf("We take N = %ld \n",N);
+    printf("We take N = %ld to make N devisible by p.\n",N);
+
+    // Find out whether the output should be printed
+    char printChar;
+    printf("Do you want to print the primes (y/n)?\n");
+    fflush(stdout);
+    scanf(" %c",&printChar);
+    switch(printChar){
+        case 'y': PrintPrimes=true; break;
+        case 'n': PrintPrimes=false; break;
+        default: printf("Sorry, that is not a 'y' or 'n' \n");
+        fflush(stdout);
+        exit(EXIT_FAILURE);
+    }
 	sieve();
 	exit(EXIT_SUCCESS);
 }
