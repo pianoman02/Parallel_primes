@@ -6,11 +6,15 @@
 long P; // number of processors requested
 long N; // maximum prime to be found
 
+long Min(long a, long b){
+    return a<b?a:b;
+}
+
 // This function a double array to the places where the primes are stored.
 // To call this function, one must have N>alpha
-bool** primesalloc(long alpha, long* size = NULL, long* amountOfPrimes){
+bool** primesalloc(long alpha, long* size, long** noOfPrimes){
     // We neglect for simplicity the storage of the first alpha-1 numbers which are calculated by the first processor.
-    bool* storage = malloc(sizeof(bool)*(N-alpha)/P)
+    bool* storage = malloc(sizeof(bool)*(N-alpha)/P);
     for (long i=0; i<(N-alpha)/P; i++)
         storage[i] = true;
     long amountOfRounds = 0; // The amount of rounds that have to happen while calculating the other prime numbers.
@@ -21,19 +25,23 @@ bool** primesalloc(long alpha, long* size = NULL, long* amountOfPrimes){
         amountOfRounds++;
     }
     bool** primearray = malloc(sizeof(bool*)*amountOfRounds);
-    amountOfPrimes = malloc(sizeof(long)*amountOfRounds);
+    long* amountOfPrimes = malloc(sizeof(long)*amountOfRounds);
 
-    beginOfMemory = alpha;
+    long beginOfMemory = alpha;
+    endOfMemory = Min(alpha*alpha,N);
     long i=0;
     while (beginOfMemory < N)
     {
         primearray[i] = storage + ((beginOfMemory - alpha)/P);
         amountOfPrimes[i] = (endOfMemory-beginOfMemory)/P;
         beginOfMemory = endOfMemory;
-        endOfMemory = min(endOfMemory*endOfMemory,N);
+        endOfMemory = Min(endOfMemory*endOfMemory,N);
+        i++;
     }
+    // Returning
     if (size != NULL)
         *size = amountOfRounds;
+    *noOfPrimes = amountOfPrimes;
     return primearray;
 }
 
@@ -60,7 +68,7 @@ long sequential_sieve(long n, bool* pb){
     return totalprimes;
 }
 
-void sequential_part_sieve(alpha,p){
+void sequential_part_sieve(long alpha,long p){
     bool* pb = malloc(alpha*sizeof(bool));
         for (long i=0; i<alpha; i++){
             pb[i] = true;
@@ -92,7 +100,7 @@ void checkPrimeOnSection(bool* section, long s, long q, long a, long b, long*pri
     for (; d*q<b;d++){
         if(section[d*q-a]){
             section[d*q-a] = false;
-            *primesamount--;
+            (*primesamount)--;
         }
     }
 }
@@ -107,15 +115,15 @@ void parallel_part_sieve(long s,long alpha, long p,long n){
     // First, we allocate all the numbers. We assume that N > alpha
     long size;
     long* amountOfPrimes;
-    bool** pb2 = primesalloc(alpha,&size, amountOfPrimes);
+    bool** pb2 = primesalloc(alpha,&size, &amountOfPrimes);
     
     long lowprimetest = alpha; // in every step, this number is squared
-    long highprimetest = min(N,alpha*alpha);
+    long highprimetest = Min(N,alpha*alpha);
     long roundno = 0;
-    while(lowprimetest < N)
+    while(lowprimetest < n)
     {
         if (s==0)
-            printf("Starting new phase -------------------------");
+            printf("Starting new phase -------------------------\n");
         
         // Reading new primes from the input
         bsp_nprocs_t nparts_recvd=0;
@@ -137,9 +145,9 @@ void parallel_part_sieve(long s,long alpha, long p,long n){
         for (long sectionno = roundno; sectionno<size; sectionno++){
             long a = ((p-s)*sectionUnderBound + s*sectionUpperBound)/p;
             long b = ((p-s-1)*sectionUnderBound + (s+1)*sectionUpperBound)/p;
-            checkPrimesOnSection(pb2[sectionno],s,arrivedprimes,totalcount, a, b,amountOfPrimes+sectionno);
+            checkPrimesOnSection(pb2[sectionno],s,arrivedprimes,totalcount, a, b,&amountOfPrimes[sectionno]);
             sectionUnderBound = sectionUpperBound;
-            sectionUpperBound = min(N, sectionUpperBound*sectionUpperBound);
+            sectionUpperBound = Min(N, sectionUpperBound*sectionUpperBound);
         }
 
         // Broadcasting the numbers
@@ -148,10 +156,11 @@ void parallel_part_sieve(long s,long alpha, long p,long n){
         bool* this_section = pb2[roundno];
         long* primesending = malloc(amountOfPrimes[roundno]*sizeof(long));
         long j=0;
-        for (long i=0;i<amountOfPrimes[roundno]; i++){
+        printf("There are %ld primes\n",amountOfPrimes[roundno]);
+        for (long i=0;i<size_this_section; i++){
             if(this_section[i]){
                 printf("%ld\n", i+a_this_section);
-                primesending[j] = i+a;
+                primesending[j] = i+a_this_section;
                 j++;
             }
         }
@@ -161,7 +170,7 @@ void parallel_part_sieve(long s,long alpha, long p,long n){
 
         // Prepairing for next round
         lowprimetest = highprimetest;
-        highprimetest = min(N, highprimetest*highprimetest);
+        highprimetest = Min(N, highprimetest*highprimetest);
         roundno++;
         free(arrivedprimes);
         free(primesending);
@@ -209,8 +218,8 @@ int main( int argc, char **argv ) {
     printf("To which number do you want to find the primes?\n");
 	fflush(stdout);
 	scanf("%ld",&N);
-    N = (N+P-1/P)*P; // We assume that p devides N (adjust in the future)
-    printf("%ld",N);
+    N = ((N+P-1)/P)*P; // We assume that p devides N (adjust in the future)
+    printf("We take N = %ld \n",N);
 	sieve();
 	exit(EXIT_SUCCESS);
 }
