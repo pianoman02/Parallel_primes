@@ -70,7 +70,7 @@ long sequential_sieve(long n, bool* pb){
     return totalprimes;
 }
 
-void sequential_part_sieve(long alpha,long p){
+long* sequential_part_sieve(long alpha,long p,long s, long* noOfPrimes2){
     bool* pb = malloc(alpha*sizeof(bool));
         for (long i=0; i<alpha; i++){
             pb[i] = true;
@@ -88,16 +88,13 @@ void sequential_part_sieve(long alpha,long p){
                     printf("%ld\n", i);
 		    }
 	    }
-        ////////////////////
-        // sending
-        ////////////////////
-        for (long t=0; t<p; t++){
-            bsp_send(t,&noOfPrimes,primesending, noOfPrimes*sizeof(long));
-        }
-        printf("%ld primes found in phase -1 by processor 0\n",noOfPrimes);
+        
+        printf("%ld primes found in phase -1 by processor %ld \n",noOfPrimes,s);
         printf("\n");
-        free(primesending);
+        *noOfPrimes2 = noOfPrimes;
         free(pb);
+        return (primesending);
+
 }
 
 void checkPrimeOnSection(bool* section, long s, long q, long a, long b, long*primesamount){
@@ -116,7 +113,7 @@ void checkPrimesOnSection(bool* section, long s, long* arrivedprimes, long total
     }
 }
 
-void parallel_part_sieve(long s,long alpha, long p,long n){
+void parallel_part_sieve(long s,long alpha, long p,long n, long*primes, long noOfPrimes){
     // First, we allocate all the numbers. We assume that N > alpha
     long size;
     long* amountOfPrimes;
@@ -131,8 +128,12 @@ void parallel_part_sieve(long s,long alpha, long p,long n){
         bsp_nprocs_t nparts_recvd=0;
         bsp_size_t nbytes_recvd=0;
         bsp_qsize(&nparts_recvd, &nbytes_recvd);
-        long* arrivedprimes = malloc(nbytes_recvd);
-        long totalcount = 0;
+        long* arrivedprimes = malloc(nbytes_recvd + noOfPrimes*sizeof(long));
+        long totalcount = noOfPrimes;
+        for (long i=0; i<noOfPrimes; i++)
+            arrivedprimes[i] = primes[i];
+        free(primes);
+        primes = NULL;
         for (long j=0; j<nparts_recvd; j++){
             bsp_size_t payload_size=0;
             long count=-1;
@@ -151,40 +152,45 @@ void parallel_part_sieve(long s,long alpha, long p,long n){
             sectionUnderBound = sectionUpperBound;
             sectionUpperBound = Min(N, sectionUpperBound*sectionUpperBound);
         }
-
+        noOfPrimes = amountOfPrimes[roundno];
+        printf("%ld primes found in phase %ld by processor %ld\n",noOfPrimes,roundno,s);
         // Broadcasting the numbers
-        long a_this_section = ((p-s)*lowprimetest + s*highprimetest)/p;
-        long size_this_section = (highprimetest-lowprimetest)/p;
-        bool* this_section = pb2[roundno];
-        long* primesending = malloc(amountOfPrimes[roundno]*sizeof(long));
-        long j=0;
-        printf("%ld primes found in phase %ld by processor %ld\n",amountOfPrimes[roundno],roundno,s);
-        for (long i=0;i<size_this_section; i++){
-            if(this_section[i]){
-                if (PrintPrimes)
-                    printf("%ld\n", i+a_this_section);
-                primesending[j] = i+a_this_section;
-                j++;
+        if (highprimetest != N){
+            long a_this_section = ((p-s)*lowprimetest + s*highprimetest)/p;
+            long size_this_section = (highprimetest-lowprimetest)/p;
+            bool* this_section = pb2[roundno];
+            primes = malloc(amountOfPrimes[roundno]*sizeof(long));
+            long j=0;
+            for (long i=0;i<size_this_section; i++){
+                if(this_section[i]){
+                    if (PrintPrimes)
+                        printf("%ld\n", i+a_this_section);
+                    primes[j] = i+a_this_section;
+                    j++;
+                }
             }
+            for (long t=0; t<p; t++){
+                if (t != s)
+                    bsp_send(t,amountOfPrimes+roundno,primes, noOfPrimes*sizeof(long));
+            }
+            bsp_sync();
         }
-        for (long t=0; t<p; t++){
-            bsp_send(t,amountOfPrimes+roundno,primesending, amountOfPrimes[roundno]*sizeof(long));
-        }
-
+        
+        
         // Prepairing for next round
         lowprimetest = highprimetest;
         highprimetest = Min(N, highprimetest*highprimetest);
         roundno++;
         free(arrivedprimes);
-        free(primesending);
-        bsp_sync();
         if (s==0)
             printf("\n");
     }
     
     // Free the resources again
+    free(primes);
     primesfree(pb2);
     free(amountOfPrimes);
+
 }
 
 void sieve() {
@@ -198,13 +204,11 @@ void sieve() {
     bsp_sync();
 
     // We calculate the primes until (not including alpha) at processor 0
-    if (s==0)
-    {
-        sequential_part_sieve(alpha, p);
-    }
-    bsp_sync();
+    
+    long noOfPrimes;
+    long* primes = sequential_part_sieve(alpha, p, s,&noOfPrimes);
 
-    parallel_part_sieve(s,alpha,p,N);
+    parallel_part_sieve(s,alpha,p,N, primes, noOfPrimes);
     
     float t = bsp_time();
     printf("It took processor %ld in total %f seconds\n",s,t);
