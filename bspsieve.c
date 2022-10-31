@@ -5,6 +5,7 @@
 
 long P; // number of processors requested
 long N; // maximum prime to be found
+long Alpha; // Parameter governing the devision of prime numbers
 bool PrintPrimes; // true prints the primes, false prints no primes.
 
 // Returns the minimum of a and b
@@ -197,7 +198,7 @@ void sieve() {
 	bsp_begin( P );
     long p = P;
 	long s = bsp_pid();
-    long alpha = p*5; // We assume p devides alpha
+    long alpha = Alpha;
 
     bsp_size_t tagSize = sizeof(long);
     bsp_set_tagsize(&tagSize);
@@ -234,8 +235,13 @@ int main( int argc, char **argv ) {
     printf("To (not including) which number N do you want to find the primes?\n");
 	fflush(stdout);
 	scanf("%ld",&N);
-    N = ((N+P-1)/P)*P; // We assume that p devides N (adjust in the future)
-    printf("We take N = %ld to make N devisible by p.\n",N);
+    N = ((N+P-1)/P)*P; // We assume that p devides N
+    printf("We take N = %ld to make alpha devisible by p.\n",N);
+    printf("What do you want the parameter alpha to be?\n");
+	fflush(stdout);
+	scanf("%ld",&Alpha);
+    Alpha = ((Alpha+P-1)/P)*P; // We assume that p devides alpha
+    printf("We take alpha = %ld to make alpha devisible by p.\n",Alpha);
 
     // Find out whether the output should be printed
     char printChar;
